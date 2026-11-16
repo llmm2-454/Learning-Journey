@@ -1,8 +1,21 @@
-//
-//  LearningJourneyApp.swift
-//  LearningJourney
-//
-//  Created by lama farhan on 02/06/1448 AH.
-//
+import SwiftUI
 
-import Foundation
+@main
+struct LearningJourneyApp: App {
+
+    // يقرأ "hasGoal" من UserDefaults، ويتحدث تلقائيًا لما نحفظ هدف جديد
+    @AppStorage("hasGoal") private var hasGoal = false
+
+    var body: some Scene {
+        WindowGroup {
+            Group {
+                if hasGoal {
+                    ActivityView()      // فيه هدف: نعرض Activity
+                } else {
+                    OnboardingView()    // ما فيه هدف: نعرض البداية
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+}

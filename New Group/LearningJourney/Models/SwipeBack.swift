@@ -1,8 +1,15 @@
-//
-//  SwipeBack.swift
-//  LearningJourney
-//
-//  Created by lama farhan on 05/06/1448 AH.
-//
+import UIKit
 
-import Foundation
+// يخلي السحب من اليسار للرجوع يشتغل حتى لو أخفينا زر الرجوع الافتراضي
+extension UINavigationController: UIGestureRecognizerDelegate {
+
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    // السحب يشتغل فقط إذا فيه أكثر من شاشة (يمنع تجمّد التطبيق)
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
+    }
+}

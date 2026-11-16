@@ -1,31 +1,40 @@
 import SwiftUI
 import Combine
 
-class GoalViewModel: ObservableObject {
+// ViewModel شاشة تعديل الهدف (Task 4)
+final class GoalViewModel: ObservableObject {
 
-    // المسودة: التعديلات المؤقتة
-    @Published var topic: String
-    @Published var selectedDuration: LearningDuration
-    @Published var showUpdateAlert: Bool = false
+    @Published var subject: String
+    @Published var duration: LearningDuration
 
-    /// نستقبل الموضوع والمدة مباشرة (بدل LearningGoal)
-    init(topic: String, duration: LearningDuration) {
-        self.topic = topic
-        self.selectedDuration = duration
+    // القيم الأصلية: نقارن فيها عشان نعرف هل تغيّر شي
+    private let originalSubject: String
+    private let originalDuration: LearningDuration
+
+    init() {
+        let d = UserDefaults.standard
+        let savedSubject = d.string(forKey: "goalSubject") ?? ""
+        let savedDuration = LearningDuration(rawValue: d.string(forKey: "goalDuration") ?? "") ?? .week
+
+        subject = savedSubject
+        duration = savedDuration
+        originalSubject = savedSubject
+        originalDuration = savedDuration
     }
 
-    /// النص بعد حذف المسافات والأسطر الجديدة
-    var cleanTopic: String {
-        topic.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var cleanSubject: String {
+        subject.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// علامة الصح ما تشتغل إذا الحقل فاضي
-    var isUpdateEnabled: Bool {
-        !cleanTopic.isEmpty
+    var canSave: Bool { !cleanSubject.isEmpty }
+
+    var hasChanges: Bool {
+        cleanSubject != originalSubject || duration != originalDuration
     }
 
-    /// عند الضغط على علامة الصح: نطلع التنبيه
-    func askToUpdate() {
-        showUpdateAlert = true
+    // يحفظ الهدف الجديد ويصفّر الـ streak
+    func update() {
+        guard canSave else { return }
+        GoalStorage.startNewGoal(subject: cleanSubject, duration: duration)
     }
 }

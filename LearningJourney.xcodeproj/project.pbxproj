@@ -30,7 +30,7 @@
 		B40C0C7330A4F41C0080DABF = {
 			isa = PBXGroup;
 			children = (
-				B40C0C7E30A4F41C0080DABF /* LearningJourney */,
+				B40C0CB930A58BBD0080DABF /* New Group */,
 				B40C0C7D30A4F41C0080DABF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +41,14 @@
 				B40C0C7C30A4F41C0080DABF /* LearningJourney.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B40C0CB930A58BBD0080DABF /* New Group */ = {
+			isa = PBXGroup;
+			children = (
+				B40C0C7E30A4F41C0080DABF /* LearningJourney */,
+			);
+			path = "New Group";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

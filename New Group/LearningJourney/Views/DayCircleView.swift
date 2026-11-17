@@ -9,7 +9,7 @@ struct DayCircleView: View {
 
     var body: some View {
         Text(number)
-            .font(.system(size: size * 0.45, weight: .regular))
+            .font(.system(size: 20, weight: .regular))   // نفس الحجم في الأسبوع والتقويم
             .foregroundColor(textColor)
             .frame(width: size, height: size)
             .background(Circle().fill(backgroundColor))
@@ -23,7 +23,7 @@ struct DayCircleView: View {
         }
     }
 
-    // الحالة أولًا، وإذا ما فيه حالة: اليوم الحالي برتقالي
+    // الحالة أولاً، وإذا ما فيه حالة: اليوم الحالي برتقالي
     private var backgroundColor: Color {
         switch status {
         case .learned: return AppColor.learnedFill

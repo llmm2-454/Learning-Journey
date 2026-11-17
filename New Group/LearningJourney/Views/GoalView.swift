@@ -1,203 +1,110 @@
 import SwiftUI
 
-// شاشة تعديل الهدف، وتُستخدم كمان لبدء هدف جديد بعد ما ينتهي الهدف (Task 3)
+// VIEW: تعرض فقط. المنطق في GoalViewModel
 struct GoalView: View {
 
-    // هل الهدف الحالي انتهى؟ إذا إي، ✓ تبدأ الهدف مباشرة بدون تنبيه
-    var goalEnded: Bool = false
-
-    @StateObject private var vm = GoalViewModel()
-    @Environment(\.dismiss) private var dismiss
-    @State private var showAlert = false
-    @FocusState private var focused: Bool
+    @Environment(\.dismiss) private var dismiss      // للرجوع للصفحة السابقة
+    @StateObject private var vm = GoalViewModel()    // الـ ViewModel
+    @State private var showConfirm = false           // إظهار نافذة التأكيد (حالة واجهة بحتة)
 
     var body: some View {
         ZStack {
-            AppColor.background.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 0) {
-                topBar
-                subjectField.padding(.top, 36)
-                durationPicker.padding(.top, 32)
-                Spacer()
+
+                // 1) الشريط العلوي
+                ZStack {
+                    Text("Learning Goal")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                    HStack {
+                        GlassIconButton(systemName: "chevron.left") { dismiss() }
+                        Spacer()
+                        // زر الصح: إذا فيه تغيير نطلع التأكيد، وإذا ما تغيّر شي نرجع مباشرة
+                        GlassIconButton(systemName: "checkmark", tint: AppColor.orange) {
+                            if vm.hasChanges { showConfirm = true } else { dismiss() }
+                        }
+                        .disabled(!vm.canSave)              // معطل إذا الموضوع فاضي
+                        .opacity(vm.canSave ? 1 : 0.4)
+                    }
+                }
+
+                // 2) النموذج مربوط بالـ ViewModel
+                GoalForm(subject: $vm.subject, duration: $vm.duration)
+                    .padding(.top, 43)
+
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .disabled(showAlert)
 
-            if showAlert {
-                Color.black.opacity(0.55)
+            // 3) نافذة التأكيد
+            if showConfirm {
+                // التصميم يعرض الخلفية رمادية. للتعتيم العادي بدّلها بـ Color.black.opacity(0.5)
+                Color(white: 0.48).opacity(0.92)
                     .ignoresSafeArea()
-                    .onTapGesture { showAlert = false }
-                alertCard
+                    .onTapGesture { showConfirm = false }   // الضغط برا يقفلها
+                confirmCard
                     .transition(.scale(scale: 0.92).combined(with: .opacity))
             }
         }
-        .preferredColorScheme(.dark)
-        .animation(.easeInOut(duration: 0.2), value: showAlert)
-        .onAppear { focused = true }
-        .navigationBarBackButtonHidden(true)
+        .animation(.spring(duration: 0.3), value: showConfirm)
+        .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
+        .englishUI()
     }
 
-    // وش يصير لما نضغط ✓
-    private func confirmTapped() {
-        focused = false
+    // MARK: - نافذة التأكيد (300 × 183، زوايا 40)
 
-        if goalEnded {
-            vm.update()
-            dismiss()
-        } else if vm.hasChanges {
-            showAlert = true      // نحذّر إن الـ streak يبدأ من جديد
-        } else {
-            dismiss()             // ما تغيّر شي
-        }
-    }
+    private var confirmCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
 
-    // MARK: - الشريط العلوي
-
-    private var topBar: some View {
-        ZStack {
-            Text("Learning Goal")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
-
-            HStack {
-                // زر الرجوع (زجاجي رمادي)
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(GlassBackground(shape: Circle()))
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                // علامة ✓ (زجاجية برتقالية)
-                Button { confirmTapped() } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(GlassBackground(shape: Circle(), color: AppColor.orange))
-                        .shadow(color: AppColor.orange.opacity(0.35), radius: 8, y: 3)
-                }
-                .buttonStyle(.plain)
-                .disabled(!vm.canSave)
-                .opacity(vm.canSave ? 1 : 0.5)
+            // العنوان والنص
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Update goal")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("If you update now, your streak will start over.")
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(white: 0.68))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .padding(.top, 8)
-    }
+            .padding(.horizontal, 8)
 
-    // MARK: - حقل الموضوع
-
-    private var subjectField: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("I want to learn")
-                .font(.system(size: 17))
-                .foregroundColor(.white)
-
-            TextField(
-                "",
-                text: $vm.subject,
-                prompt: Text("Swift").foregroundColor(AppColor.placeholder)
-            )
-            .font(.system(size: 17))
-            .foregroundColor(.white)
-            .tint(AppColor.orange)
-            .focused($focused)
-            .padding(.top, 6)
-
-            Rectangle()
-                .fill(AppColor.divider)
-                .frame(height: 1)
-        }
-    }
-
-    // MARK: - اختيار المدة
-
-    private var durationPicker: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("I want to learn it in a")
-                .font(.system(size: 17))
-                .foregroundColor(.white)
-
-            HStack(spacing: 12) {
-                ForEach(LearningDuration.allCases) { item in
-                    let isSelected = vm.duration == item
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { vm.duration = item }
-                    } label: {
-                        Text(item.rawValue)
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(isSelected ? .white : AppColor.secondaryText)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 11)
-                            .background(
-                                Group {
-                                    if isSelected {
-                                        OrangeCapsuleBackground()
-                                    } else {
-                                        GrayCapsuleBackground()
-                                    }
-                                }
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    // MARK: - تنبيه Update goal
-
-    private var alertCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Update goal")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
-
-            Text("If you update now, your streak will start over.")
-                .font(.system(size: 15))
-                .foregroundColor(AppColor.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 10) {
-                Button { showAlert = false } label: {
+            HStack(spacing: 8) {
+                // Dismiss: يقفل النافذة بس
+                Button { showConfirm = false } label: {
                     Text("Dismiss")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(GrayCapsuleBackground())
+                        .frame(height: 47)
                 }
+                .buttonStyle(.plain)
+                .appGlass(Capsule(), tint: Color(white: 0.2), interactive: true)
+
+                // Update: الـ ViewModel يحفظ الهدف الجديد ويصفّر الستريك، والـ View ترجع
                 Button {
                     vm.update()
+                    showConfirm = false
                     dismiss()
                 } label: {
                     Text("Update")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(OrangeCapsuleBackground())
+                        .frame(height: 47)
                 }
+                .buttonStyle(.plain)
+                .appGlass(Capsule(), tint: AppColor.orange, interactive: true)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 14)
+            .padding(.top, 30)
         }
-        .padding(18)
+        .padding(EdgeInsets(top: 23, leading: 14, bottom: 15, trailing: 14))
         .frame(width: 300)
-        .background(
-            GlassBackground(shape: RoundedRectangle(cornerRadius: 30, style: .continuous))
-        )
+        .appGlass(RoundedRectangle(cornerRadius: 40, style: .continuous), tint: Color(white: 0.11))
+        .shadow(color: .black.opacity(0.35), radius: 28, y: 12)
     }
 }
 
-#Preview {
-    NavigationStack {
-        GoalView()
-    }
-}
+#Preview { GoalView().preferredColorScheme(.dark) }

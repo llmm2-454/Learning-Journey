@@ -1,53 +1,73 @@
 import SwiftUI
 import Combine
 
+// VIEW: تعرض فقط. الحالة والقواعد كلها في ActivityViewModel
 struct ActivityView: View {
 
+    // الـ ViewModel الرئيسي للصفحة
     @StateObject private var vm = ActivityViewModel()
 
-    @State private var showGoal = false
+    // حالة واجهة بحتة (فتح الصفحات الداخلية): مكانها الـ View
     @State private var showCalendar = false
+    @State private var showGoal = false
 
-    // مؤقت كل 30 ثانية (عشان الأزرار تتفعل الساعة 12 صباحًا)
+    // مؤقت كل 30 ثانية: يحدّث الوقت وقاعدة الـ 32 ساعة وتفعيل الأزرار
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    // هل الهدف منتهي (نجاح أو فشل)؟ يغيّر بعض المسافات
+    private var isEnd: Bool { vm.state != .active }
+
+    // نص زر التجميد: "Freezed" إذا اليوم متجمّد أو خلصت الفريزات
+    private var freezeLabel: String {
+        (vm.isFrozenToday || vm.frozenCount >= vm.maxFreezes) ? "Freezed for a day" : "Freeze for a day"
+    }
+
+    // MARK: - الجسم الرئيسي
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppColor.background.ignoresSafeArea()
+            VStack(spacing: 0) {
 
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    weekStrip.padding(.top, 20)
-                    statCards.padding(.top, 14)
+                // 1) العنوان والتاريخ وأزرار التقويم والهدف
+                header.padding(.horizontal, 16).padding(.top, 4)
 
-                    Spacer()
+                // 2) شريط الأسبوع
+                weekRow.padding(.top, isEnd ? 21 : 17)
 
-                    // الهدف شغّال؟ نعرض الأزرار. انتهى؟ نعرض النتيجة
-                    if vm.state == .active {
-                        activeContent
-                    } else {
-                        goalEndedContent
-                    }
+                // 3) كرت Learned وكرت Freezed
+                statsRow.padding(.horizontal, 14).padding(.top, 13)
 
-                    Spacer()
+                // 4) المحتوى حسب حالة الهدف (من الـ ViewModel)
+                switch vm.state {
+                case .active:
+                    activeContent
+                case .completed:
+                    endContent(icon: "hands.clap.fill",
+                               title: "Well done!",
+                               subtitle: "Ready for your next goal?")
+                case .failed:
+                    endContent(icon: "xmark.seal",
+                               title: "You didn't reach your goal this time.",
+                               subtitle: "Want to set another goal?")
                 }
-                .padding(.horizontal, 16)
+
+                Spacer(minLength: 0)
             }
-            .preferredColorScheme(.dark)
-            .onReceive(timer) { _ in vm.tick() }
-            .onAppear { vm.reload() }
-            .navigationDestination(isPresented: $showGoal) {
-                GoalView(goalEnded: vm.state != .active)
-            }
-            .navigationDestination(isPresented: $showCalendar) {
-                CalendarView(vm: vm)
-            }
+            .background(Color.black.ignoresSafeArea())
+            // صفحة التقويم: نمرر لها نفس الـ ViewModel
+            .navigationDestination(isPresented: $showCalendar) { CalendarView(activity: vm) }
+            // صفحة تعديل الهدف
+            .navigationDestination(isPresented: $showGoal) { GoalView() }
             .toolbar(.hidden, for: .navigationBar)
+            // كل ما نرجع للصفحة (مثلاً بعد تحديث الهدف) نعيد قراءة البيانات
+            .onAppear { vm.reload() }
+            // كل 30 ثانية نحدّث الوقت
+            .onReceive(timer) { _ in vm.tick() }
         }
+        .englishUI()
     }
 
-    // MARK: - Header
+    // MARK: - 1) الهيدر
 
     private var header: some View {
         HStack(alignment: .top) {
@@ -55,163 +75,149 @@ struct ActivityView: View {
                 Text("Activity")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white)
-                Text(vm.headerDate)
+                Text(vm.headerDate)   // مثال: Thursday, 24 October
                     .font(.system(size: 17))
                     .foregroundColor(AppColor.secondaryText)
             }
             Spacer()
             HStack(spacing: 12) {
-                circleIconButton("calendar") { showCalendar = true }
-                circleIconButton("pencil.and.outline") { showGoal = true }
+                GlassIconButton(systemName: "calendar") { showCalendar = true }
+                GlassIconButton(systemName: "pencil.tip.crop.circle") { showGoal = true }
             }
-            .padding(.top, 4)
         }
-        .padding(.top, 8)
     }
 
-    // زر دائري زجاجي بأيقونة (التقويم والهدف)
-    private func circleIconButton(_ name: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: name)
-                .font(.system(size: 18))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(GlassBackground(shape: Circle()))
-        }
-        .buttonStyle(.plain)
-    }
+    // MARK: - 2) شريط الأسبوع
 
-    // MARK: - شريط الأسبوع
-
-    private var weekStrip: some View {
-        HStack {
-            ForEach(vm.weekDays, id: \.self) { day in
-                VStack(spacing: 8) {
-                    Text(vm.weekdayLetter(day))
+    private var weekRow: some View {
+        HStack(spacing: 10) {
+            ForEach(vm.weekDays, id: \.self) { date in
+                VStack(spacing: 5) {
+                    // حرف اليوم
+                    Text(vm.weekdayLetter(date))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AppColor.secondaryText)
-                    DayCircleView(
-                        number: vm.dayNumber(day),
-                        status: vm.status(for: day),
-                        isToday: vm.isToday(day)
-                    )
+                        .foregroundColor(.white)
+                    // دائرة اليوم: لونها حسب حالته
+                    DayCircleView(number: vm.dayNumber(date),
+                                  status: vm.status(for: date),
+                                  isToday: vm.isToday(date))
                 }
-                .frame(maxWidth: .infinity)
             }
-        }
-    }
-
-    // MARK: - بطاقتا Learned و Freezed
-
-    private var statCards: some View {
-        HStack(spacing: 12) {
-            statCard(icon: "flame.fill", color: AppColor.orange,
-                     value: vm.daysText(vm.learnedCount), caption: "Learned")
-            statCard(icon: "snowflake", color: AppColor.blue,
-                     value: vm.daysText(vm.frozenCount), caption: "Freezed")
-        }
-    }
-
-    // بطاقة زجاجية
-    private func statCard(icon: String, color: Color, value: String, caption: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundColor(color)
-            Text(value)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
-            Text(caption)
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.85))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(
-            GlassBackground(shape: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    // MARK: - 3) الكروت
+
+    private var statsRow: some View {
+        HStack(spacing: 14) {
+            statCard(icon: "flame.fill", color: AppColor.orange,
+                     text: vm.daysText(vm.learnedCount), label: "Learned")
+            statCard(icon: "snowflake", color: AppColor.blue,
+                     text: vm.daysText(vm.frozenCount), label: "Freezed")
+        }
+    }
+
+    // كرت واحد: أيقونة + العدد + الاسم
+    private func statCard(icon: String, color: Color, text: String, label: String) -> some View {
+        VStack(spacing: 0) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundColor(color)
+            Text(text)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.top, isEnd ? 10 : 9)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(.white)
+                .padding(.top, isEnd ? 6 : 3)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: isEnd ? 100 : 90)
+        // ✏️ قلاس داكن مثل التصميم (قبل: tint أبيض كان يخلي الكرت فاتح)
+        .appGlass(RoundedRectangle(cornerRadius: 30, style: .continuous),
+                  tint: Color(white: 0.05))
+        // حدّ رفيع شفاف يعطي حافة الزجاج
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
         )
     }
 
-    // MARK: - الدائرة البرتقالية + زر التجميد
+    // MARK: - 4-أ) أثناء الهدف
 
     private var activeContent: some View {
-        VStack(spacing: 40) {
+        VStack(spacing: 0) {
 
-            // الدائرة الكبيرة: برتقالية إذا تشتغل، رمادية إذا معطّلة
-            Button { vm.logLearned() } label: {
+            // الدائرة الكبيرة: تسجيل التعلّم (تتعطل حسب قواعد الـ ViewModel)
+            Button(action: vm.logLearned) {
                 Text(vm.isLearnedToday ? "Logged as Learned" : "Log as Learned")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(vm.canLog ? .white : AppColor.secondaryText)
-                    .frame(width: 270, height: 270)
-                    .background(
-                        GlassBackground(shape: Circle(),
-                                        color: vm.canLog ? AppColor.orange : nil)
-                    )
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(vm.canLog ? .white : AppColor.disabledText)
+                    .frame(width: 272, height: 272)
             }
             .buttonStyle(.plain)
             .disabled(!vm.canLog)
+            .appGlass(Circle(),
+                      tint: vm.canLog ? AppColor.orange : AppColor.darkGlass,
+                      interactive: vm.canLog)
+            .padding(.top, 59)
 
-            VStack(spacing: 14) {
-                // زر التجميد: أزرق إذا يشتغل، رمادي إذا معطّل
-                Button { vm.freezeDay() } label: {
-                    Text(vm.canFreeze ? "Freeze for a day" : "Freezed for a day")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(vm.canFreeze ? .white : AppColor.secondaryText)
-                        .frame(width: 270, height: 46)
-                        .background(
-                            GlassBackground(shape: Capsule(),
-                                            color: vm.canFreeze ? AppColor.blue : nil)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!vm.canFreeze)
-
-                Text("\(vm.frozenCount) out of \(vm.maxFreezes) Freezes used")
-                    .font(.system(size: 13))
-                    .foregroundColor(AppColor.secondaryText)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - انتهاء الهدف (Well done / ما حققتي الهدف)
-
-    private var goalEndedContent: some View {
-        let completed = vm.state == .completed
-
-        return VStack(spacing: 8) {
-            Image(systemName: completed ? "hands.clap.fill" : "xmark.seal")
-                .font(.system(size: 44))
-                .foregroundColor(AppColor.orange)
-                .padding(.bottom, 10)
-
-            Text(completed ? "Well done!" : "You didn't reach your goal this time.")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-
-            Text(completed ? "Ready for your next goal?" : "Want to set another goal?")
-                .font(.system(size: 14))
-                .foregroundColor(AppColor.secondaryText)
-
-            Button { showGoal = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "pencil.and.outline")
-                    Text("Set a goal")
-                }
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
-                .background(OrangeCapsuleBackground())
+            // زر التجميد
+            Button(action: vm.freezeDay) {
+                Text(freezeLabel)
+                    .font(.system(size: 17))
+                    .foregroundColor(vm.canFreeze ? .white : AppColor.disabledText)
+                    .frame(width: 272, height: 46)
             }
             .buttonStyle(.plain)
-            .padding(.top, 50)
+            .disabled(!vm.canFreeze)
+            .appGlass(Capsule(),
+                      tint: vm.canFreeze ? AppColor.blue : AppColor.darkGlass,
+                      interactive: vm.canFreeze)
+            .padding(.top, 48)
+
+            // عدّاد التجميد
+            Text("\(vm.frozenCount) out of \(vm.maxFreezes) Freezes used")
+                .font(.system(size: 14))
+                .foregroundColor(AppColor.secondaryText)
+                .padding(.top, 16)
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 4-ب) نجاح / فشل
+
+    private func endContent(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 0) {
+            Image(systemName: icon)
+                .font(.system(size: 44))
+                .foregroundColor(AppColor.orange)
+                .padding(.top, 68)
+
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.top, 18)
+
+            Text(subtitle)
+                .font(.system(size: 14))
+                .foregroundColor(AppColor.secondaryText)
+                .padding(.top, 2)
+
+            // زر وضع هدف جديد → يفتح صفحة الهدف
+            Button { showGoal = true } label: {
+                Label("Set a goal", systemImage: "pencil.tip.crop.circle")
+                    .font(.system(size: 17))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 22)
+                    .frame(height: 48)
+            }
+            .buttonStyle(.plain)
+            .appGlass(Capsule(), tint: AppColor.orange, interactive: true)
+            .padding(.top, 74)
+        }
     }
 }
 
-#Preview {
-    ActivityView()
-}
+#Preview { ActivityView().preferredColorScheme(.dark) }

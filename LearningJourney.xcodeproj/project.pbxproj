@@ -6,8 +6,13 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B47E1C5530AC47C500337052 /* LJ_Icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B47E1C5230AC452100337052 /* LJ_Icon.icon */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B40C0C7C30A4F41C0080DABF /* LearningJourney.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LearningJourney.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B47E1C5230AC452100337052 /* LJ_Icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = LJ_Icon.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +37,7 @@
 			children = (
 				B40C0CB930A58BBD0080DABF /* New Group */,
 				B40C0C7D30A4F41C0080DABF /* Products */,
+				B47E1C5230AC452100337052 /* LJ_Icon.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -110,6 +116,7 @@
 		B40C0C7A30A4F41C0080DABF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				B47E1C5530AC47C500337052 /* LJ_Icon.icon in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
@@ -240,8 +247,9 @@
 		B40C0C8A30A4F41D0080DABF /* Debug configuration for PBXNativeTarget "LearningJourney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = LJ_Icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -282,8 +290,9 @@
 		B40C0C8B30A4F41D0080DABF /* Release configuration for PBXNativeTarget "LearningJourney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = LJ_Icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;

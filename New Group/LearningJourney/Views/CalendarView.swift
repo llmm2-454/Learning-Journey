@@ -1,6 +1,6 @@
 import SwiftUI
 
-// VIEW: تعرض فقط. الشهور والخانات من CalendarViewModel
+// VIEW: تعرض فقط. الخانات والحالات من CalendarViewModel
 struct CalendarView: View {
 
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +13,22 @@ struct CalendarView: View {
 
     private let weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]   // عناوين الأعمدة
     private let columns = Array(repeating: GridItem(.fixed(54), spacing: 0), count: 7)   // 7 أعمدة
+
+    // تقويم ميلادي ثابت (حتى لو جوالك على التقويم الهجري)
+    private let gregorian = Calendar(identifier: .gregorian)
+
+    /// كل شهور السنة الحالية: يناير → ديسمبر (أول يوم من كل شهر)
+    private var yearMonths: [Date] {
+        let year = gregorian.component(.year, from: Date())
+        return (1...12).compactMap { month in
+            gregorian.date(from: DateComponents(year: year, month: month, day: 1))
+        }
+    }
+
+    /// الشهر الحالي من القائمة (عشان نروح له أول ما تفتح الصفحة)
+    private var currentMonth: Date? {
+        yearMonths.first { gregorian.isDate($0, equalTo: Date(), toGranularity: .month) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,18 +46,22 @@ struct CalendarView: View {
             .padding(.horizontal, 16)
             .padding(.top, 4)
 
-            // 2) الشهور (سكرول)
+            // 2) كل شهور السنة (سكرول)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(vm.months, id: \.self) { month in
+                        ForEach(yearMonths, id: \.self) { month in
                             monthSection(month).id(month)
                         }
                     }
                     .padding(.top, 9)
                 }
                 // أول ما تفتح الصفحة نروح للشهر الحالي
-                .onAppear { proxy.scrollTo(vm.currentMonth, anchor: .top) }
+                .onAppear {
+                    if let current = currentMonth {
+                        proxy.scrollTo(current, anchor: .top)
+                    }
+                }
             }
         }
         .background(Color.black.ignoresSafeArea())

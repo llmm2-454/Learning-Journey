@@ -1,28 +1,7 @@
 import SwiftUI
+import Combine
 
-// MARK: - Model
-
-enum WeekDayStatus {
-    case learned   // دائرة بنية + رقم برتقالي
-    case frozen    // دائرة كحلية + رقم أزرق
-    case today     // اليوم الحالي ولسا ما سجلته
-    case none      // يوم عادي
-}
-
-struct WeekDay: Identifiable {
-    let id = UUID()
-    let letter: String
-    let number: Int
-    let status: WeekDayStatus
-
-    /// يبني أسبوع كامل (S M T W T F S من 20 إلى 26) من قائمة حالات
-    static func week(_ statuses: [WeekDayStatus]) -> [WeekDay] {
-        let letters = ["S", "M", "T", "W", "T", "F", "S"]
-        return statuses.enumerated().map { index, status in
-            WeekDay(letter: letters[index], number: 20 + index, status: status)
-        }
-    }
-}
+// MARK: - نتيجة الهدف (تستخدم للمعاينة فقط)
 
 enum GoalResult {
     case success
@@ -48,45 +27,43 @@ private enum Palette {
 
 struct ActivityView: View {
 
-    // MARK: الحالة (تتغير لما تضغط الأزرار)
+    // MARK: الـ ViewModel (مصدر الحقيقة الوحيد)
+    // كل الأرقام والحالات والأفعال تجي منه، والـ View بس تعرض
 
-    @State private var learnedDays: Int
-    @State private var frozenDays: Int
-    @State private var weekDays: [WeekDay]
-    @State private var isLoggedToday = false
-    @State private var isFrozenToday = false
-    @State private var freezesUsed = 0
+    @StateObject private var activity = ActivityViewModel()
 
-    // فتح الشاشات الثانية
+    // MARK: حالة العرض فقط (فتح الشاشات)
+
     @State private var showCalendar = false   // أيقونة التقويم
     @State private var showGoal = false       // أيقونة الهدف + زر Set a goal
 
-    // التقويم يحتاج ActivityViewModel عشان يعرض حالات الأيام
-    @StateObject private var activity = ActivityViewModel()
+    // للمعاينة فقط: لو حطيتي قيمة هنا تظهر شاشة النجاح أو الفشل مباشرة
+    // في التطبيق الحقيقي تكون nil، والنتيجة تجي من حالة الهدف الحقيقية
+    private let previewResult: GoalResult?
 
-    // MARK: قيم ثابتة
+    // مؤقت كل 30 ثانية يحدّث الوقت وحالة الأزرار (قاعدة الـ 32 ساعة)
+    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
-    private let maxFreezes = 2
-    private let todayIndex = 4          // اليوم 24 (الخانة الخامسة في الأسبوع)
-    private let dateText = "Thursday, 24 October"
-
-    /// nil = الهدف شغال، .success / .failure = الهدف انتهى
-    private let goalResult: GoalResult?
-
-    // MARK: init
-    // ActivityView() بدون أي شي تشتغل مثل ما هي، والباقي للمعاينة
-
-    init(
-        goalResult: GoalResult? = nil,
-        learnedDays: Int = 4,
-        frozenDays: Int = 0,
-        weekDays: [WeekDay] = WeekDay.week([.learned, .learned, .learned, .learned, .today, .none, .none])
-    ) {
-        self.goalResult = goalResult
-        _learnedDays = State(initialValue: learnedDays)
-        _frozenDays = State(initialValue: frozenDays)
-        _weekDays = State(initialValue: weekDays)
+    init(previewResult: GoalResult? = nil) {
+        self.previewResult = previewResult
     }
+
+    // MARK: حالات مساعدة
+
+    /// النتيجة اللي تنعرض: nil = الهدف شغال
+    private var resultToShow: GoalResult? {
+        if let previewResult { return previewResult }       // وضع المعاينة
+        if activity.state == .completed { return .success } // الهدف اكتمل
+        if activity.state == .failed { return .failure }    // الهدف فشل
+        return nil                                          // الهدف شغال
+    }
+
+    /// ما فيه هدف محفوظ؟ نوقف الأزرار
+    private var hasGoal: Bool { activity.goal != nil }
+
+    // الأزرار تنفتح أو تنقفل حسب قواعد الـ ViewModel
+    private var logDisabled: Bool { !hasGoal || !activity.canLog }
+    private var freezeDisabled: Bool { !hasGoal || !activity.canFreeze }
 
     // MARK: Body
 
@@ -101,14 +78,15 @@ struct ActivityView: View {
                 weekRow
                     .padding(.leading, 9)
                     .padding(.trailing, 6)
-                    .padding(.top, goalResult == nil ? 16 : 20)
+                    .padding(.top, resultToShow == nil ? 16 : 20)
 
                 statsCards
                     .padding(.horizontal, 14)
                     .padding(.top, 12)
 
-                if let goalResult {
-                    resultSection(goalResult)
+                // نختار الشاشة: نتيجة (Well done / فشل) أو الأزرار
+                if let result = resultToShow {
+                    resultSection(success: result == .success)
                         .padding(.top, 67)
                 } else {
                     activeSection
@@ -120,53 +98,17 @@ struct ActivityView: View {
         }
         .preferredColorScheme(.dark)
         .englishUI()
+        // نحدّث البيانات كل ما تفتح الشاشة، وكل 30 ثانية
+        .onAppear { activity.reload() }
+        .onReceive(timer) { _ in activity.tick() }
         // الشاشات اللي تنفتح لما تضغط الأزرار
         .fullScreenCover(isPresented: $showCalendar) {
             CalendarView(activity: activity)
         }
-        .fullScreenCover(isPresented: $showGoal) {
+        // لما تتسكر شاشة الهدف نعيد قراءة الهدف الجديد المحفوظ
+        .fullScreenCover(isPresented: $showGoal, onDismiss: { activity.reload() }) {
             GoalView()
         }
-    }
-
-    // MARK: - المنطق (اللي يصير لما تضغط)
-
-    /// زر Log as Learned
-    private func logAsLearned() {
-        guard !isLoggedToday else { return }
-
-        // إذا اليوم كان مجمّد، نلغي التجميد أول
-        if isFrozenToday {
-            frozenDays -= 1
-            freezesUsed -= 1
-            isFrozenToday = false
-        }
-
-        learnedDays += 1
-        isLoggedToday = true
-        setTodayStatus(.learned)
-    }
-
-    /// زر Freeze for a day
-    private func freezeToday() {
-        guard !isFrozenToday, freezesUsed < maxFreezes else { return }
-
-        // إذا اليوم كان مسجّل Learned، نلغيه أول
-        if isLoggedToday {
-            learnedDays -= 1
-            isLoggedToday = false
-        }
-
-        frozenDays += 1
-        freezesUsed += 1
-        isFrozenToday = true
-        setTodayStatus(.frozen)
-    }
-
-    /// يغيّر لون دائرة اليوم في شريط الأسبوع
-    private func setTodayStatus(_ status: WeekDayStatus) {
-        let old = weekDays[todayIndex]
-        weekDays[todayIndex] = WeekDay(letter: old.letter, number: old.number, status: status)
     }
 
     // MARK: - Header
@@ -177,7 +119,8 @@ struct ActivityView: View {
                 Text("Activity")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white)
-                Text(dateText)
+                // التاريخ الحقيقي من الـ ViewModel (مو نص ثابت)
+                Text(activity.headerDate)
                     .font(.system(size: 17))
                     .foregroundColor(Palette.gray)
             }
@@ -204,20 +147,20 @@ struct ActivityView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Week Row
+    // MARK: - Week Row (الأسبوع الحقيقي من الـ ViewModel)
 
     private var weekRow: some View {
         HStack(spacing: 0) {
-            ForEach(weekDays) { day in
+            ForEach(activity.weekDays, id: \.self) { date in
                 VStack(spacing: 6) {
-                    Text(day.letter)
+                    Text(activity.weekdayLetter(date))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
-                    Text("\(day.number)")
+                    Text(activity.dayNumber(date))
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(textColor(for: day.status))
+                        .foregroundColor(dayTextColor(for: date))
                         .frame(width: 44, height: 44)
-                        .background(backgroundColor(for: day.status))
+                        .background(dayBackgroundColor(for: date))
                         .clipShape(Circle())
                 }
                 .frame(maxWidth: .infinity)
@@ -225,22 +168,18 @@ struct ActivityView: View {
         }
     }
 
-    private func textColor(for status: WeekDayStatus) -> Color {
-        switch status {
-        case .learned: return Palette.orangeText
-        case .frozen:  return Palette.cyan
-        case .today:   return .white
-        case .none:    return .white
-        }
+    // لون رقم اليوم: تعلّم = برتقالي، تجميد = أزرق، غير ذلك = أبيض
+    private func dayTextColor(for date: Date) -> Color {
+        guard let status = activity.status(for: date) else { return .white }
+        return status == .learned ? Palette.orangeText : Palette.cyan
     }
 
-    private func backgroundColor(for status: WeekDayStatus) -> Color {
-        switch status {
-        case .learned: return Palette.orangeBG
-        case .frozen:  return Palette.cyanBG
-        case .today:   return Palette.orange
-        case .none:    return .clear
+    // خلفية الدائرة: اليوم الحالي بدون تسجيل = برتقالي كامل، الأيام العادية = شفاف
+    private func dayBackgroundColor(for date: Date) -> Color {
+        if let status = activity.status(for: date) {
+            return status == .learned ? Palette.orangeBG : Palette.cyanBG
         }
+        return activity.isToday(date) ? Palette.orange : Color.clear
     }
 
     // MARK: - Stats Cards
@@ -248,9 +187,9 @@ struct ActivityView: View {
     private var statsCards: some View {
         HStack(spacing: 14) {
             statCard(icon: "flame.fill", color: Palette.orange,
-                     value: "\(learnedDays) days", label: "Learned")
+                     value: activity.daysText(activity.learnedCount), label: "Learned")
             statCard(icon: "snowflake", color: Palette.cyan,
-                     value: "\(frozenDays) days", label: "Freezed")
+                     value: activity.daysText(activity.frozenCount), label: "Freezed")
         }
     }
 
@@ -281,29 +220,26 @@ struct ActivityView: View {
 
     // MARK: - Active Section (الهدف شغال)
 
-    private var freezeDisabled: Bool {
-        isFrozenToday || freezesUsed >= maxFreezes
-    }
-
     private var activeSection: some View {
         VStack(spacing: 0) {
 
             // الدائرة الكبيرة (272 × 272)
-            Button(action: logAsLearned) {
-                Text(isLoggedToday ? "Logged as Learned" : "Log as Learned")
+            // الضغطة تنادي الـ ViewModel اللي يحفظ DayLog بالتاريخ الحقيقي
+            Button(action: { activity.logLearned() }) {
+                Text(activity.isLearnedToday ? "Logged as Learned" : "Log as Learned")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(isLoggedToday ? Palette.disabledText : .white)
+                    .foregroundColor(logDisabled ? Palette.disabledText : .white)
                     .frame(width: 272, height: 272)
-                    .background(isLoggedToday ? Color(white: 0.11) : Palette.orangeDeep)
+                    .background(logDisabled ? Color(white: 0.11) : Palette.orangeDeep)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(rim(top: 0.40, bottom: 0.08), lineWidth: 1.5))
             }
             .buttonStyle(.plain)
-            .disabled(isLoggedToday)
+            .disabled(logDisabled)
 
             // زر Freeze (272 × 45)
-            Button(action: freezeToday) {
-                Text(isFrozenToday ? "Freezed for a day" : "Freeze for a day")
+            Button(action: { activity.freezeDay() }) {
+                Text(activity.isFrozenToday ? "Freezed for a day" : "Freeze for a day")
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(freezeDisabled ? Palette.disabledText : .white)
                     .frame(width: 272, height: 45)
@@ -315,7 +251,8 @@ struct ActivityView: View {
             .disabled(freezeDisabled)
             .padding(.top, 49)
 
-            Text("\(freezesUsed) out of \(maxFreezes) Freezes used")
+            // الحد الأقصى حسب مدة الهدف (أسبوع / شهر / سنة)
+            Text("\(activity.frozenCount) out of \(activity.maxFreezes) Freezes used")
                 .font(.system(size: 14))
                 .foregroundColor(Palette.gray)
                 .padding(.top, 16)
@@ -325,26 +262,20 @@ struct ActivityView: View {
 
     // MARK: - Result Section (الهدف انتهى)
 
-    private func resultSection(_ result: GoalResult) -> some View {
+    private func resultSection(success: Bool) -> some View {
         VStack(spacing: 0) {
-            Image(systemName: result == .success ? "hands.sparkles.fill" : "xmark.seal")
+            Image(systemName: success ? "hands.sparkles.fill" : "xmark.seal")
                 .font(.system(size: 42))
                 .foregroundColor(Palette.orange)
                 .frame(height: 46)
 
-            // النص مطابق للتصميم حرفيًا "Will done!"
-            // الصحيح إملائيًا "Well done!" — غيّره لو تبي
-            Text(result == .success
-                 ? "Will done!"
-                 : "You didn't reach your goal this time.")
+            Text(success ? "Well done!" : "You didn't reach your goal this time.")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .padding(.top, 20)
 
-            Text(result == .success
-                 ? "Ready for your next goal?"
-                 : "Want to set another goal?")
+            Text(success ? "Ready for your next goal?" : "Want to set another goal?")
                 .font(.system(size: 14))
                 .foregroundColor(Palette.gray)
                 .padding(.top, 5)
@@ -388,20 +319,10 @@ struct ActivityView: View {
     ActivityView()
 }
 
-#Preview("Success") {
-    ActivityView(
-        goalResult: .success,
-        learnedDays: 3,
-        frozenDays: 2,
-        weekDays: WeekDay.week([.learned, .learned, .learned, .frozen, .frozen, .none, .none])
-    )
+#Preview("Success - Well done") {
+    ActivityView(previewResult: .success)
 }
 
 #Preview("Failure") {
-    ActivityView(
-        goalResult: .failure,
-        learnedDays: 2,
-        frozenDays: 2,
-        weekDays: WeekDay.week([.learned, .learned, .none, .frozen, .frozen, .none, .none])
-    )
+    ActivityView(previewResult: .failure)
 }
